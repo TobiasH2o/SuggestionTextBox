@@ -2,76 +2,86 @@ import javax.swing.*;
 import javax.swing.event.DocumentEvent;
 import javax.swing.event.DocumentListener;
 import java.awt.*;
+import java.awt.event.FocusEvent;
+import java.awt.event.FocusListener;
 import java.awt.event.KeyEvent;
 import java.awt.event.KeyListener;
 import java.util.ArrayList;
-import java.util.Arrays;
 
-public class SuggestionField extends JTextField implements DocumentListener, KeyListener {
+public class SuggestionField implements DocumentListener, KeyListener, FocusListener {
 
-    String[] values = new String[0];
+    String[] values;
     ArrayList<String> displayValues = new ArrayList<>(0);
-    JFrame suggestionFrame = new JFrame();
+    JDialog suggestionFrame;
     JPanel suggestionPanel = new JPanel();
     Color backGround = new Color(109, 104, 104, 133);
     Color selectBackGround = new Color(109, 104, 104, 133);
     Color textColor = new Color(5, 19, 88, 255);
     Color selectTextColor = new Color(115, 134, 238, 255);
     BoxLayout bl = new BoxLayout(suggestionPanel, BoxLayout.Y_AXIS);
-    int selectedEntry = 0;
+    ArrayList<JTextField> boxes = new ArrayList<>(0);
 
-    public SuggestionField() {
-        this.getDocument().addDocumentListener(this);
-        this.addKeyListener(this);
+    boolean grabbingFocus = false;
+    boolean sticky = false;
+
+    int selectedBox = -1;
+    int selectedEntry = 0;
+    int displaySize = 50;
+
+    public SuggestionField(String[] values, JFrame parentDisplay) {
+        suggestionFrame = new JDialog(parentDisplay);
         suggestionFrame.add(suggestionPanel);
         suggestionFrame.setUndecorated(true);
         suggestionFrame.setAlwaysOnTop(true);
+        suggestionFrame.setFocusable(false);
+        suggestionPanel.setFocusable(false);
         bl.maximumLayoutSize(suggestionPanel);
+        this.values = values;
     }
 
-    public void setValues(String[] values) {
-        this.values = values.clone();
-        for (int i = 0;i < values.length;i++) {
-            this.values[i] = values[i].toUpperCase();
-        }
-        Arrays.sort(this.values);
+    public void updateValues(String[] values) {
+        this.values = values;
     }
 
-    public boolean updateSuggestions() {
+    public void updateSuggestions() {
         boolean added = false;
-        boolean add = true;
+        boolean add;
+        int count = displaySize;
         displayValues.clear();
-        for (int i = 0;i < values.length;i++) {
-            add = true;
-            for (int k = 0;k < this.getText().length();k++) {
-                if (values[i].toUpperCase().charAt(k) != this.getText().toUpperCase().charAt(k)) {
-                    add = false;
-                    break;
+        if (selectedBox > -1 && selectedBox < boxes.size())
+            if (values != null && boxes.get(selectedBox).getText().length() > 0) {
+                for (int i = 0;i < values.length && count > 0;i++) {
+                    add = true;
+                    for (int k = 0;k < boxes.get(selectedBox).getText().length() && k < values[i].length();k++) {
+                        if (values[i].toUpperCase().charAt(k) !=
+                                boxes.get(selectedBox).getText().toUpperCase().charAt(k)) {
+                            add = false;
+                            break;
+                        }
+                    }
+                    if (add && values[i].length() >= boxes.get(selectedBox).getText().length()) {
+                        added = true;
+                        count--;
+                        displayValues.add(values[i]);
+                    }
                 }
             }
-            if (add) {
-                added = true;
-                displayValues.add(values[i]);
-                if(values[i].equalsIgnoreCase(this.getText())){
-                    added = false;
-                    break;
-                }
-            }
+        if (!added) {
+            displayValues.add("----");
         }
-        return added;
     }
 
     private void updateDisplay() {
 
-        suggestionFrame.setSize(this.getWidth(), 16 * displayValues.size());
+        suggestionFrame.setSize(boxes.get(selectedBox).getWidth(), 16 * displayValues.size());
         suggestionPanel.removeAll();
         suggestionPanel.setLayout(new BoxLayout(suggestionPanel, BoxLayout.Y_AXIS));
         for (int i = 0;i < displayValues.size();i++) {
             JLabel a = new JLabel(displayValues.get(i));
-            if(i == selectedEntry){
+            if (i == selectedEntry) {
                 a.setBackground(selectBackGround);
                 a.setForeground(selectTextColor);
-            }else {
+            } else {
                 a.setBackground(backGround);
                 a.setForeground(textColor);
             }
@@ -79,24 +89,54 @@ public class SuggestionField extends JTextField implements DocumentListener, Key
         }
         suggestionPanel.revalidate();
         suggestionFrame.revalidate();
-        suggestionFrame.setLocationRelativeTo(this);
-        suggestionFrame.setLocation(suggestionFrame.getX(), this.getY() + this.getHeight());
+        Point possition = new Point(boxes.get(selectedBox).getLocationOnScreen().x,
+                boxes.get(selectedBox).getLocationOnScreen().y + boxes.get(selectedBox).getHeight());
+        suggestionFrame.setLocation(possition);
+        suggestionFrame.repaint();
         suggestionFrame.setVisible(true);
+    }
+
+    public void addBox(JTextField newBox) {
+        boxes.add(newBox);
+        newBox.setFocusTraversalKeysEnabled(false);
+        newBox.setFocusable(true);
+        newBox.getDocument().addDocumentListener(this);
+        newBox.addKeyListener(this);
+        newBox.addFocusListener(this);
+    }
+
+    public void purge() {
+        //
+        for (JTextField e : boxes) {
+            e.removeFocusListener(this);
+            e.removeKeyListener(this);
+            e.getDocument().removeDocumentListener(this);
+        }
+        suggestionFrame.setVisible(false);
+        boxes.clear();
     }
 
     @Override
     public void insertUpdate(DocumentEvent e) {
-        if(updateSuggestions())
+        updateSuggestions();
         updateDisplay();
-        else
-            suggestionFrame.setVisible(false);
         selectedEntry = 0;
-        this.requestFocus();
+        if (selectedBox > -1) {
+            boxes.get(selectedBox).grabFocus();
+            sticky = true;
+        }
+
     }
 
     @Override
     public void removeUpdate(DocumentEvent e) {
-
+        updateSuggestions();
+        updateDisplay();
+        selectedEntry = 0;
+        if (selectedBox > -1) {
+            boxes.get(selectedBox).grabFocus();
+            sticky = true;
+        }
     }
 
     @Override
@@ -112,31 +152,109 @@ public class SuggestionField extends JTextField implements DocumentListener, Key
     @Override
     public void keyPressed(KeyEvent e) {
         int ID = e.getKeyCode();
-        switch(ID){
-
+        switch (ID) {
             case 40:
-                if(selectedEntry < displayValues.size() - 1) selectedEntry++;
+                if (selectedEntry < displayValues.size() - 1) selectedEntry++;
                 updateDisplay();
                 break;
 
             case 38:
-                if(selectedEntry > 0) selectedEntry--;
+                if (selectedEntry > 0) selectedEntry--;
                 updateDisplay();
                 break;
 
             case 10:
-                this.setText(displayValues.get(selectedEntry));
+                if (!(displayValues.get(selectedEntry).equals("----") && boxes.get(selectedBox).getText().isEmpty()))
+                    boxes.get(selectedBox).setText(displayValues.get(selectedEntry));
+                suggestionFrame.setVisible(false);
+                sticky = false;
                 break;
 
+            case 13:
             case 27:
                 suggestionFrame.setVisible(false);
+                if (selectedEntry >= 0 && selectedEntry < displayValues.size()) {
+                    if (!displayValues.get(selectedEntry).equals("----")) {
+                        boxes.get(selectedBox).setText(displayValues.get(selectedEntry));
+                        for (String i : values) {
+                            if (boxes.get(selectedBox).getText().equalsIgnoreCase(i)) {
+                                boxes.get(selectedBox).setBackground(new Color(150, 231, 108, 255));
+                                break;
+                            }else{
+                                boxes.get(selectedBox).setBackground(new Color(231, 108, 108, 255));
+                            }
+                        }
+                    }
+                }
+                sticky = false;
                 break;
 
+            default:
+                break;
         }
+        if (selectedBox != -1) boxes.get(selectedBox).grabFocus();
     }
 
     @Override
     public void keyReleased(KeyEvent e) {
 
     }
+
+    @Override
+    public void focusGained(FocusEvent e) {
+        if (!grabbingFocus) {
+            Log.logLine("Focus Gained");
+            GraphicsDevice gd = GraphicsEnvironment.getLocalGraphicsEnvironment().getDefaultScreenDevice();
+            for (int i = 0;i < boxes.size();i++) {
+                if (e.getComponent() == boxes.get(i)) {
+                    selectedBox = i;
+                    break;
+                }
+            }
+            displaySize = (gd.getDisplayMode().getWidth() - boxes.get(selectedBox).getLocationOnScreen().y -
+                    boxes.get(selectedBox).getHeight()) /
+                    boxes.get(selectedBox).getFontMetrics(boxes.get(selectedBox).getFont()).getHeight();
+        } else {
+            Log.logLine("Grabbed Focus");
+            grabbingFocus = false;
+        }
+
+    }
+
+    public void apply() {
+        Log.logLine("Checking entry");
+        suggestionFrame.setVisible(false);
+        updateSuggestions();
+        Log.logLine("Updated suggestions");
+        if (selectedBox != -1) if (selectedEntry >= 0 && selectedEntry < displayValues.size()) {
+            if (!displayValues.get(selectedEntry).equals("----")) {
+                boxes.get(selectedBox).setText(displayValues.get(selectedEntry));
+                for (String i : values) {
+                    if (boxes.get(selectedBox).getText().equalsIgnoreCase(i)) {
+                        Log.logLine("Set Values");
+                        boxes.get(selectedBox).setBackground(new Color(150, 231, 108, 255));
+                        break;
+                    }else {
+                        boxes.get(selectedBox).setBackground(new Color(231, 108, 108, 255));
+                    }
+                }
+            }
+        }
+        selectedBox = -1;
+        sticky = false;
+    }
+
+    @Override
+    public void focusLost(FocusEvent e) {
+        Log.logLine("Focus Lost");
+        if (sticky) {
+            grabbingFocus = true;
+            boxes.get(selectedBox).grabFocus();
+            Log.logLine("Grabbing Focus");
+        } else {
+            Log.logLine("Leaving");
+            suggestionFrame.setVisible(false);
+        }
+    }
+
 }
