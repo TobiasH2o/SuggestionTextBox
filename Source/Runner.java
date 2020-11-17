@@ -8,7 +8,7 @@ public class Runner {
         frame.setDefaultCloseOperation(3);
         frame.setSize(100, 100);
         String[] items = new String[]{"Car", "dog", "cat", "train", "plum", "cute", "pie", "egg", "ham", "tan", "blam", "can", "lorum", "ipsum"
-                , "dora", "india", "egyt", "norway", "norse", "gods", "goose", "echo", "elderly", "me"};
+                , "dora", "india", "egyt", "norway", "norse", "gods", "goose", "echo", "elderly"};
 
         SuggestionField sf = new SuggestionField();
 
